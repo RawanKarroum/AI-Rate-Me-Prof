@@ -10,8 +10,15 @@ const ChatPage = () => {
   const [chatHistory, setChatHistory] = useState<Array<{ user: string; bot: string }>>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [typingIndicator, setTypingIndicator] = useState('');
-  const [sessionId, setSessionId] = useState<string | null>(localStorage.getItem('sessionId')); // Retrieve sessionId from localStorage
+  const [sessionId, setSessionId] = useState<string | null>(null); // Initialize with null
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedSessionId = localStorage.getItem('sessionId');
+      setSessionId(storedSessionId);
+    }
+  }, []);
 
   const handleSendMessage = async () => {
     if (!message) return; // Ensure a message is provided

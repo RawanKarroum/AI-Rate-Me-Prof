@@ -5,13 +5,6 @@ import { PineconeStore } from "@langchain/pinecone";
 import puppeteer from 'puppeteer';
 import { Document } from "@langchain/core/documents";
 
-// Array of URLs to process
-const urls = [
-    "https://www.ratemyprofessors.com/professor/2646791",
-    "https://www.ratemyprofessors.com/professor/2371875",
-    "https://www.ratemyprofessors.com/professor/2890504",
-];
-
 // Function to chunk text into approximately 2000 character segments
 const chunkText = (text: string, chunkSize: number): string[] => {
   const chunks = [];
@@ -42,7 +35,7 @@ const loadDocumentsFromWeb = async (url: string): Promise<Document[]> => {
   return docs;
 };
 
-const setupPineconeLangchain = async () => {
+const setupPineconeLangchain = async (urls: string[]) => {
   // Load documents from all URLs
   let allDocs: Document[] = [];
   for (const url of urls) {
@@ -75,14 +68,20 @@ const setupPineconeLangchain = async () => {
 
 export const POST = async (req: NextRequest) => {
   try {
-    console.log("Received request to process URLs");
+    console.log("Received request to process URL");
 
-    const { vectorStore } = await setupPineconeLangchain();
+    const { url } = await req.json(); // Extract the URL from the request body
+
+    if (!url) {
+      return NextResponse.json({ error: "No URL provided" }, { status: 400 });
+    }
+
+    const { vectorStore } = await setupPineconeLangchain([url]); // Process the single URL
     console.log("Pinecone and LangChain setup complete, documents inserted into vector store");
 
-    return NextResponse.json({ message: "Documents successfully inserted into vector store" });
+    return NextResponse.json({ message: "Document successfully inserted into vector store" });
   } catch (error) {
-    console.error("Error processing URLs:", error);
+    console.error("Error processing URL:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 };
