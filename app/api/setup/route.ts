@@ -2,25 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Pinecone } from "@pinecone-database/pinecone";
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { PineconeStore } from "@langchain/pinecone";
-import { ChatOpenAI } from "@langchain/openai";
-import { SelfQueryRetriever } from "langchain/retrievers/self_query";
-import { PineconeTranslator } from "@langchain/pinecone";
 import puppeteer from 'puppeteer';
 import { Document } from "@langchain/core/documents";
 
 // Array of URLs to process
 const urls = [
-    "https://www.torontomu.ca/",
-    "https://www.torontomu.ca/programs/undergraduate/computer-engineering/",
-    "https://www.torontomu.ca/admissions/undergraduate/apply/",
-    "https://www.torontomu.ca/programs/undergraduate/computer-engineering/#tab-1691528434193-tuition-and-fees",
-    "https://www.torontomu.ca/calendar/2024-2025/programs/feas/computer_eng/#!accordion-1595938884546-full-time--four-year-program---software-engineering-option",
-    "https://www.torontomu.ca/calendar/2024-2025/programs/feas/computer_eng/#!accordion-1595938884507-computer-engineering---common-first-two-years",
-    "https://www.torontomu.ca/calendar/2024-2025/dates/",
-    "https://www.torontomu.ca/programs/undergraduate/computer-science/",
-    "https://www.torontomu.ca/programs/undergraduate/computer-science/#!accordion-1694188206521-requirements-for-full-time--4-year-program",
-    "https://www.torontomu.ca/calendar/2024-2025/programs/science/computer_sci/#!accordion-1595938857886-full-time--four-year-program",
-    "https://www.torontomu.ca/programs/undergraduate/computer-science/#tab-1693260955526-tuition-and-fees",
+    "https://www.ratemyprofessors.com/professor/2646791",
+    "https://www.ratemyprofessors.com/professor/2371875",
+    "https://www.ratemyprofessors.com/professor/2890504",
 ];
 
 // Function to chunk text into approximately 2000 character segments
@@ -81,66 +70,19 @@ const setupPineconeLangchain = async () => {
   });
   console.log("Vector store created");
 
-  // Initialize LLM
-  const llm = new ChatOpenAI({
-    model: "gpt-4o-mini",
-    temperature: 0.8,
-    apiKey: process.env.OPENAI_API_KEY as string,
-  });
-  console.log("LLM instance created");
-
-  // Initialize SelfQueryRetriever
-  const selfQueryRetriever = SelfQueryRetriever.fromLLM({
-    llm: llm,
-    vectorStore: vectorStore,
-    documentContents: "Document content",
-    attributeInfo: [],
-    structuredQueryTranslator: new PineconeTranslator(),
-  });
-  console.log("SelfQueryRetriever instance created");
-
-  return { selfQueryRetriever, llm };
+  return { vectorStore };
 };
 
 export const POST = async (req: NextRequest) => {
   try {
-    console.log("Received request");
-    const { question } = await req.json();
-    console.log("Question received:", question);
+    console.log("Received request to process URLs");
 
-    if (!question) {
-      console.log("No question provided");
-      return NextResponse.json({ error: "No question provided" }, { status: 400 });
-    }
+    const { vectorStore } = await setupPineconeLangchain();
+    console.log("Pinecone and LangChain setup complete, documents inserted into vector store");
 
-    const { selfQueryRetriever, llm } = await setupPineconeLangchain();
-    console.log("Pinecone and LangChain setup complete");
-
-    // Retrieve relevant documents
-    const relevantDocuments = await selfQueryRetriever.invoke(question);
-    console.log("Relevant documents retrieved:", relevantDocuments);
-
-    const documentContents = relevantDocuments.map(doc => doc.pageContent).join("\n");
-    console.log("Document contents:", documentContents);
-
-    // Prepare messages for the LLM
-    const messages = [
-      { role: "system", content: "You are a helpful assistant." },
-      { role: "user", content: question },
-      { role: "system", content: documentContents },
-    ];
-    console.log("Messages prepared for LLM:", messages);
-
-    // Generate a response based on the retrieved documents
-    const response = await llm.invoke(messages as any);
-    console.log("Response generated:", response);
-
-    const answer = response.content;
-    console.log("Generated response content:", answer);
-
-    return NextResponse.json({ response: answer });
+    return NextResponse.json({ message: "Documents successfully inserted into vector store" });
   } catch (error) {
-    console.error("Error processing query:", error);
+    console.error("Error processing URLs:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 };
