@@ -39,7 +39,7 @@ const chunkText = (text: string, chunkSize: number): string[] => {
 };
 
 // Function to load documents from the web and extract comments
-const loadDocumentsFromWeb = async (url: string): Promise<Document[]> => {
+const loadDocumentsFromWeb = async (url: string): Promise<{ docs: Document[], analyzedComments: any[] }> => {
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
   await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -49,24 +49,12 @@ const loadDocumentsFromWeb = async (url: string): Promise<Document[]> => {
 
   // Use the correct selector based on the page structure
   const comments = await page.evaluate(() => {
-    const commentElements = Array.from(document.querySelectorAll('.Comments__StyledComments-dzzyvm-0')); // Replace with the correct selector
+    const commentElements = Array.from(document.querySelectorAll('.Comments__StyledComments-dzzyvm-0')); 
     return commentElements.map(el => el.textContent ? el.textContent.trim() : '');
   });
 
   // Log the extracted comments as a JSON array
   console.log("Extracted comments:", JSON.stringify(comments, null, 2));
-
-  await browser.close();
-
-  // Split content into chunks of approximately 2000 characters each
-  const chunkSize = 2000; // Adjust based on average token size
-  const chunks = chunkText(content, chunkSize);
-
-  // Create Document objects from chunks
-  const docs = chunks.map((chunk, index) => new Document({
-    pageContent: chunk,
-    metadata: { url, chunkIndex: index },
-  }));
 
   // Perform sentiment analysis on extracted comments
   const analyzedComments = await Promise.all(
@@ -75,7 +63,7 @@ const loadDocumentsFromWeb = async (url: string): Promise<Document[]> => {
       return {
         comment,
         sentiment,
-        date: new Date().toISOString(), // Use actual date if available
+        date: new Date().toISOString(), 
       };
     })
   );
@@ -83,17 +71,32 @@ const loadDocumentsFromWeb = async (url: string): Promise<Document[]> => {
   // Log analyzed comments
   console.log("Analyzed Comments:", JSON.stringify(analyzedComments, null, 2));
 
-  return docs;
+  await browser.close();
+
+  // Split content into chunks of approximately 2000 characters each
+  const chunkSize = 2000; 
+  const chunks = chunkText(content, chunkSize);
+
+  // Create Document objects from chunks
+  const docs = chunks.map((chunk, index) => new Document({
+    pageContent: chunk,
+    metadata: { url, chunkIndex: index },
+  }));
+
+  return { docs, analyzedComments };
 };
 
-const setupPineconeLangchain = async (urls: string[]) => {
-  // Load documents from all URLs
+const setupPineconeLangchain = async (urls: string[]): Promise<{ vectorStore: PineconeStore, analyzedComments: any[] }> => {
   let allDocs: Document[] = [];
+  let allAnalyzedComments: any[] = [];
+
   for (const url of urls) {
-    const docs = await loadDocumentsFromWeb(url);
+    const { docs, analyzedComments } = await loadDocumentsFromWeb(url);
     allDocs = allDocs.concat(docs);
+    allAnalyzedComments = allAnalyzedComments.concat(analyzedComments);
   }
-  //console.log("Documents loaded:", allDocs);
+  
+  // console.log("Documents loaded:", allDocs);
 
   // Initialize Pinecone
   const pinecone = new Pinecone({
@@ -114,7 +117,7 @@ const setupPineconeLangchain = async (urls: string[]) => {
   });
   console.log("Vector store created");
 
-  return { vectorStore };
+  return { vectorStore, analyzedComments: allAnalyzedComments }; 
 };
 
 export const POST = async (req: NextRequest) => {
@@ -127,10 +130,13 @@ export const POST = async (req: NextRequest) => {
       return NextResponse.json({ error: "No URL provided" }, { status: 400 });
     }
 
-    const { vectorStore } = await setupPineconeLangchain([url]); // Process the single URL
+    const { vectorStore, analyzedComments } = await setupPineconeLangchain([url]); 
     console.log("Pinecone and LangChain setup complete, documents inserted into vector store");
 
-    return NextResponse.json({ message: "Document successfully inserted into vector store" });
+    return NextResponse.json({ 
+      message: "Document successfully inserted into vector store",
+      analyzedComments, 
+    });
   } catch (error) {
     console.error("Error processing URL:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

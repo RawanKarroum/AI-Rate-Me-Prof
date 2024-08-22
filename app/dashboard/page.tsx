@@ -13,6 +13,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 
+// Register the necessary components with Chart.js
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -24,81 +25,52 @@ ChartJS.register(
 );
 
 interface AnalyzedComment {
-    comment: string;
-    sentiment: string;
-    date: string;
+  comment: string;
+  sentiment: string;
+  date: string;
 }
 
-interface ChartData {
-    labels: string[];
-    datasets: {
-        label: string;
-        data: number[];
-        borderColor: string;
-        fill: boolean;
-    }[];
+interface DashboardProps {
+  analyzedComments: AnalyzedComment[];
 }
 
-const Dashboard: React.FC<{ analyzedComments: AnalyzedComment[] }> = ({ analyzedComments = [] }) => {
-    const [chartData, setChartData] = useState<ChartData | null>(null);
+const Dashboard: React.FC<DashboardProps> = ({ analyzedComments }) => {
+  console.log("Dashboard rendered with analyzedComments:", analyzedComments);
 
-    console.log("Dashboard rendered with analyzedComments:", analyzedComments);
+  if (!analyzedComments || analyzedComments.length === 0) {
+    console.log("No analyzed comments available.");
+    return <div>No analyzed comments available.</div>;
+  }
 
-    useEffect(() => {
-        if (analyzedComments && analyzedComments.length > 0) {
-            console.log("Analyzed comments available:", analyzedComments);
+  const sentiments = analyzedComments.map((comment) =>
+    comment.sentiment === "Positive" ? 1 : comment.sentiment === "Negative" ? -1 : 0
+  );
+  const dates = analyzedComments.map((comment) => comment.date);
 
-            const sentiments = analyzedComments.map(comment => {
-                if (comment.sentiment.includes('Positive')) return 1;
-                if (comment.sentiment.includes('Negative')) return -1;
-                return 0; // Neutral
-            });
+  const chartData = {
+    labels: dates,
+    datasets: [
+      {
+        label: "Sentiment Trend",
+        data: sentiments,
+        borderColor: "rgba(75, 192, 192, 1)",
+        fill: false,
+      },
+    ],
+  };
 
-            console.log("Mapped sentiments:", sentiments);
-
-            const dates = analyzedComments.map(comment => {
-                const date = new Date(comment.date);
-                return `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}`;
-            });
-
-            console.log("Mapped dates:", dates);
-
-            const data: ChartData = {
-                labels: dates,
-                datasets: [{
-                    label: 'Sentiment Trend',
-                    data: sentiments,
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    fill: false,
-                }],
-            };
-
-            console.log("Final chart data:", data);
-
-            setChartData(data);
-        } else {
-            console.log("No analyzed comments available.");
-        }
-    }, [analyzedComments]);
-
-    return (
-        <div>
-            {chartData ? (
-                <>
-                    <Line data={chartData} />
-                    <ul>
-                        {analyzedComments.map((commentObj, index) => (
-                            <li key={index}>
-                                {commentObj.date}: {commentObj.comment} ({commentObj.sentiment})
-                            </li>
-                        ))}
-                    </ul>
-                </>
-            ) : (
-                <p>No comments available</p>
-            )}
-        </div>
-    );
+  return (
+    <div>
+      <Line data={chartData} />
+      <ul>
+        {analyzedComments.map((commentObj, index) => (
+          <li key={index}>
+            {commentObj.date}: {commentObj.comment} ({commentObj.sentiment})
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 };
 
 export default Dashboard;

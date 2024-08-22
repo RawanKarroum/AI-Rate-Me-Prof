@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Box, TextField, Button, Typography } from '@mui/material';
-import Dashboard from '../dashboard/page'; // Adjust the import based on your file structure
+import Dashboard from '../dashboard/page'; 
 
 const UploadProfessorURL = () => {
   const [url, setUrl] = useState('');
@@ -10,35 +10,35 @@ const UploadProfessorURL = () => {
   const [analyzedComments, setAnalyzedComments] = useState([]);
 
   const handleUpload = async () => {
-    setMessage('');
-
+    setMessage("");
+  
     if (!url) {
-      setMessage('Please enter a URL.');
+      setMessage("Please enter a URL.");
       return;
     }
-
+  
     try {
-      const response = await fetch('/api/upload-professor', {
-        method: 'POST',
+      const response = await fetch("/api/upload-professor", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ url }),
       });
-
-      const data = await response.json();
-
+  
       if (response.ok) {
-        setMessage('Professor data successfully uploaded.');
-        setAnalyzedComments(data.analyzedComments || []);
+        const data = await response.json();
+        setAnalyzedComments(data.analyzedComments || []); 
+        setMessage("Professor data successfully uploaded.");
       } else {
+        const data = await response.json();
         setMessage(`Error: ${data.error}`);
       }
     } catch (error) {
-      console.error('Error uploading professor data:', error);
-      setMessage('Error uploading professor data.');
+      console.error("Error uploading professor data:", error);
+      setMessage("Error uploading professor data.");
     }
-  };
+  };  
 
   return (
     <Box
