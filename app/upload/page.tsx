@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, TextField, Button, Typography } from '@mui/material';
+import Dashboard from '../dashboard/page'; // Adjust the import based on your file structure
 
 const UploadProfessorURL = () => {
   const [url, setUrl] = useState('');
   const [message, setMessage] = useState('');
+  const [analyzedComments, setAnalyzedComments] = useState([]);
 
   const handleUpload = async () => {
     setMessage('');
@@ -24,10 +26,12 @@ const UploadProfessorURL = () => {
         body: JSON.stringify({ url }),
       });
 
+      const data = await response.json();
+
       if (response.ok) {
         setMessage('Professor data successfully uploaded.');
+        setAnalyzedComments(data.analyzedComments || []);
       } else {
-        const data = await response.json();
         setMessage(`Error: ${data.error}`);
       }
     } catch (error) {
@@ -67,6 +71,7 @@ const UploadProfessorURL = () => {
           {message}
         </Typography>
       )}
+      <Dashboard analyzedComments={analyzedComments} />
     </Box>
   );
 };
