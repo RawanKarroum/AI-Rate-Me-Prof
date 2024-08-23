@@ -11,6 +11,6 @@ export default function Home() {
   }, [router]);
 
   return (
-    <>Hello</>
+    <></>
   );
 }
