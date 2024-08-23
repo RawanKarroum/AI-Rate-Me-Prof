@@ -48,9 +48,8 @@ const loadDocumentsFromWeb = async (
   analyzedComments: any[];
   professorName: string | null;
 }> => {
-  const browser = await puppeteer.launch({
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    headless: true,
+  const browser = await puppeteer.connect({
+    browserWSEndpoint: "wss://chrome.browserless.io/",
   });
 
   const page = await browser.newPage();
