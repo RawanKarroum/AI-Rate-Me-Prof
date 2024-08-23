@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { PineconeStore } from "@langchain/pinecone";
-import puppeteer from 'puppeteer';
+import puppeteer from "puppeteer";
 import { Document } from "@langchain/core/documents";
 import OpenAI from "openai";
-import { db } from '../../config/Firebase';  // Import Firebase Firestore
-import { collection, addDoc } from "firebase/firestore"; 
+import { db } from "../../config/Firebase"; // Import Firebase Firestore
+import { collection, addDoc } from "firebase/firestore";
 
 // Initialize OpenAI
 const openai = new OpenAI({
@@ -41,18 +41,32 @@ const chunkText = (text: string, chunkSize: number): string[] => {
 };
 
 // Function to load documents from the web and extract comments and professor's name
-const loadDocumentsFromWeb = async (url: string): Promise<{ docs: Document[], analyzedComments: any[], professorName: string | null }> => {
-  const browser = await puppeteer.launch();
+const loadDocumentsFromWeb = async (
+  url: string
+): Promise<{
+  docs: Document[];
+  analyzedComments: any[];
+  professorName: string | null;
+}> => {
+  const browser = await puppeteer.launch({
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: true,
+  });
+
   const page = await browser.newPage();
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.goto(url, { waitUntil: "domcontentloaded" });
 
   // Extract the page content as plain text
   const content = await page.evaluate(() => document.body.innerText);
 
   // Extract the professor's name
   const professorName = await page.evaluate(() => {
-    const nameElement = document.querySelector('.NameTitle__Name-dowf0z-0.cfjPUG');
-    return nameElement && nameElement.textContent ? nameElement.textContent.trim() : null;
+    const nameElement = document.querySelector(
+      ".NameTitle__Name-dowf0z-0.cfjPUG"
+    );
+    return nameElement && nameElement.textContent
+      ? nameElement.textContent.trim()
+      : null;
   });
 
   // Log the extracted professor's name
@@ -60,8 +74,12 @@ const loadDocumentsFromWeb = async (url: string): Promise<{ docs: Document[], an
 
   // Use the correct selector based on the page structure
   const comments = await page.evaluate(() => {
-    const commentElements = Array.from(document.querySelectorAll('.Comments__StyledComments-dzzyvm-0'));
-    return commentElements.map(el => el.textContent ? el.textContent.trim() : '');
+    const commentElements = Array.from(
+      document.querySelectorAll(".Comments__StyledComments-dzzyvm-0")
+    );
+    return commentElements.map((el) =>
+      el.textContent ? el.textContent.trim() : ""
+    );
   });
 
   // Perform sentiment analysis on extracted comments
@@ -97,30 +115,42 @@ const loadDocumentsFromWeb = async (url: string): Promise<{ docs: Document[], an
   const chunks = chunkText(content, chunkSize);
 
   // Create Document objects from chunks
-  const docs = chunks.map((chunk, index) => new Document({
-    pageContent: chunk,
-    metadata: { url, chunkIndex: index },
-  }));
+  const docs = chunks.map(
+    (chunk, index) =>
+      new Document({
+        pageContent: chunk,
+        metadata: { url, chunkIndex: index },
+      })
+  );
 
   // If professor's name is available, create a document for it
   if (professorName) {
-    docs.unshift(new Document({
-      pageContent: `Full name: ${professorName}`,
-      metadata: { url, chunkIndex: -1 }, // Assign a special index for the professor's name
-    }));
+    docs.unshift(
+      new Document({
+        pageContent: `Full name: ${professorName}`,
+        metadata: { url, chunkIndex: -1 }, // Assign a special index for the professor's name
+      })
+    );
   }
 
   return { docs, analyzedComments, professorName };
 };
 
 // Function to set up Pinecone and Langchain, and handle professor's name
-const setupPineconeLangchain = async (urls: string[]): Promise<{ vectorStore: PineconeStore, analyzedComments: any[], professorNames: string[] }> => {
+const setupPineconeLangchain = async (
+  urls: string[]
+): Promise<{
+  vectorStore: PineconeStore;
+  analyzedComments: any[];
+  professorNames: string[];
+}> => {
   let allDocs: Document[] = [];
   let allAnalyzedComments: any[] = [];
   let professorNames: string[] = [];
 
   for (const url of urls) {
-    const { docs, analyzedComments, professorName } = await loadDocumentsFromWeb(url);
+    const { docs, analyzedComments, professorName } =
+      await loadDocumentsFromWeb(url);
     allDocs = allDocs.concat(docs);
     allAnalyzedComments = allAnalyzedComments.concat(analyzedComments);
     if (professorName) {
@@ -161,8 +191,11 @@ export const POST = async (req: NextRequest) => {
       return NextResponse.json({ error: "No URL provided" }, { status: 400 });
     }
 
-    const { vectorStore, analyzedComments, professorNames } = await setupPineconeLangchain([url]);
-    console.log("Pinecone and LangChain setup complete, documents inserted into vector store");
+    const { vectorStore, analyzedComments, professorNames } =
+      await setupPineconeLangchain([url]);
+    console.log(
+      "Pinecone and LangChain setup complete, documents inserted into vector store"
+    );
 
     return NextResponse.json({
       message: "Document successfully inserted into vector store",
@@ -171,7 +204,10 @@ export const POST = async (req: NextRequest) => {
     });
   } catch (error) {
     console.error("Error processing URL:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 };
 
