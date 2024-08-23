@@ -139,8 +139,7 @@ export const POST = async (req: NextRequest) => {
 
       if (ratings.length > 0) {
         return NextResponse.json({
-          response: "Here is the trend line of ratings over time:",
-          ratings,
+          ratings, // Only send the ratings data
           sessionId: session,
         });
       } else {
