@@ -1,19 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { PineconeStore } from "@langchain/pinecone";
 import { ChatOpenAI } from "@langchain/openai";
 import { SelfQueryRetriever } from "langchain/retrievers/self_query";
 import { PineconeTranslator } from "@langchain/pinecone";
-import { HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
-import { v4 as uuidv4 } from 'uuid'; // Use uuid to create unique session IDs
-import { prompt } from '../../utils/Prompt';
+import {
+  HumanMessage,
+  AIMessage,
+  SystemMessage,
+} from "@langchain/core/messages";
+import { v4 as uuidv4 } from "uuid"; // Use uuid to create unique session IDs
+import { prompt } from "../../utils/Prompt";
+import { db } from "../../config/Firebase"; // Import Firebase Firestore
+import { collection, query, where, getDocs } from "firebase/firestore";
 
 interface ChatHistory {
-  [key: string]: Array<HumanMessage | AIMessage | SystemMessage>;
+  [key: string]: {
+    history: Array<HumanMessage | AIMessage | SystemMessage>;
+    currentProfessor?: string;
+  };
 }
 
-const chatHistories: ChatHistory = {}; // Store chat history per session
+const chatHistories: ChatHistory = {}; // Store chat history and professor name per session
 
 const setupPineconeLangchain = async () => {
   const pinecone = new Pinecone({
@@ -43,7 +52,7 @@ const setupPineconeLangchain = async () => {
     structuredQueryTranslator: new PineconeTranslator(),
   });
 
-  return { selfQueryRetriever, llm };
+  return { selfQueryRetriever, llm, vectorStore };
 };
 
 export const POST = async (req: NextRequest) => {
@@ -51,54 +60,125 @@ export const POST = async (req: NextRequest) => {
     const { question, sessionId } = await req.json();
 
     if (!question) {
-      return NextResponse.json({ error: "No question provided" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No question provided" },
+        { status: 400 }
+      );
     }
 
-    // Log the incoming session ID for debugging
-    console.log("Incoming session ID:", sessionId);
-
-    // Create a new session if sessionId is not provided
     let session = sessionId || uuidv4();
-
-    // Log the session ID being used
     console.log("Using session ID:", session);
 
-    const { selfQueryRetriever, llm } = await setupPineconeLangchain();
+    const { selfQueryRetriever, llm, vectorStore } =
+      await setupPineconeLangchain();
 
-    // Initialize chat history for the session if it doesn't exist
     if (!chatHistories[session]) {
-      console.log("Initializing new chat history for session:", session);
-      chatHistories[session] = [];
-    } else {
-      console.log("Appending to existing chat history for session:", session);
+      console.log(
+        "Initializing new chat history and professor for session:",
+        session
+      );
+      chatHistories[session] = { history: [] };
     }
 
-    // Fetch relevant documents based on the user's query
+    const combinedMessages = [
+      ...chatHistories[session].history,
+      new HumanMessage(question),
+    ];
+
+    const nameExtractionPrompt = `What is the full name of the professor mentioned? I only want you to return the full name nothing else.`;
+    const nameResponse = await llm.invoke([
+      new SystemMessage(nameExtractionPrompt),
+      ...combinedMessages,
+    ]);
+
+    let professorName = "";
+    if (typeof nameResponse.content === "string") {
+      professorName = nameResponse.content.trim();
+    } else if (Array.isArray(nameResponse.content)) {
+      professorName = nameResponse.content
+        .map((c) => (typeof c === "string" ? c : ""))
+        .join(" ")
+        .trim();
+    }
+
+    const searchResults = await vectorStore.similaritySearch(professorName, 1);
+    let fullName = "";
+
+    if (searchResults.length > 0) {
+      const fullNameMatch =
+        searchResults[0].pageContent.match(/Full name: (.+)/);
+      fullName = fullNameMatch ? fullNameMatch[1].trim() : "";
+      if (fullName) {
+        chatHistories[session].currentProfessor = fullName;
+      }
+    }
+
+    if (!fullName && chatHistories[session].currentProfessor) {
+      fullName = chatHistories[session].currentProfessor;
+    }
+
+    const trendLineKeywords = ["trend line", "ratings", "over time", "graph"];
+    const isTrendLineQuery = trendLineKeywords.some((keyword) =>
+      question.toLowerCase().includes(keyword)
+    );
+
+    if (isTrendLineQuery && fullName) {
+      const q = query(
+        collection(db, "professor_comments"),
+        where("professorName", "==", fullName)
+      );
+      const querySnapshot = await getDocs(q);
+
+      const ratings: any = [];
+      querySnapshot.forEach((doc) => {
+        ratings.push(doc.data().analyzedComments);
+      });
+
+      console.log("Firebase Query Results for Professor:", fullName);
+      console.log("Retrieved Ratings Data:", ratings);
+
+      if (ratings.length > 0) {
+        return NextResponse.json({
+          response: "Here is the trend line of ratings over time:",
+          ratings,
+          sessionId: session,
+        });
+      } else {
+        return NextResponse.json({
+          response: "No ratings data available for the specified professor.",
+          sessionId: session,
+        });
+      }
+    }
+
     const relevantDocuments = await selfQueryRetriever.invoke(question);
-    const documentContents = relevantDocuments.map(doc => doc.pageContent).join("\n");
+    const documentContents = relevantDocuments
+      .map((doc) => doc.pageContent)
+      .join("\n");
 
-    // Append current question to chat history
-    chatHistories[session].push(new HumanMessage(question));
+    chatHistories[session].history.push(new HumanMessage(question));
 
-    // Prepare the current set of messages including the previous history
     const messages = [
       new SystemMessage(prompt),
-      ...chatHistories[session], // Include previous history
+      ...chatHistories[session].history,
       new AIMessage(documentContents),
     ];
 
-    // Generate a response based on the retrieved documents and chat history
     const response = await llm.invoke(messages);
-    const answerContent = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
+    const answerContent =
+      typeof response.content === "string"
+        ? response.content
+        : JSON.stringify(response.content);
 
-    // Append assistant's response to chat history
-    chatHistories[session].push(new AIMessage(answerContent));
+    chatHistories[session].history.push(new AIMessage(answerContent));
 
-    // Return the assistant's response and the session ID
     return NextResponse.json({ response: answerContent, sessionId: session });
   } catch (error) {
     console.error("Error processing query:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 };
 
@@ -121,6 +201,9 @@ export const DELETE = async (req: NextRequest) => {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error clearing chat history:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 };
