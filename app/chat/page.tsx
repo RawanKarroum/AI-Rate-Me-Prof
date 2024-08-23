@@ -31,6 +31,7 @@ type TrendMessage = ChatMessage & {
   trendData?: any;
 };
 
+// calculate the moving average
 const calculateMovingAverage = (data: number[], period: number) => {
   let result = [];
   for (let i = 0; i < data.length; i++) {
